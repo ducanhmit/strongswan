@@ -885,16 +885,19 @@ static private_pkcs11_public_key_t* create_ml_dsa_key(key_type_t key_type,
 pkcs11_public_key_t *pkcs11_public_key_load(key_type_t type, va_list args)
 {
 	private_pkcs11_public_key_t *this;
-	chunk_t n, e, blob;
+	chunk_t n, e, blob, raw;
 	size_t keylen = 0;
 
-	n = e = blob = chunk_empty;
+	n = e = blob = raw = chunk_empty;
 	while (TRUE)
 	{
 		switch (va_arg(args, builder_part_t))
 		{
 			case BUILD_BLOB_ASN1_DER:
 				blob = va_arg(args, chunk_t);
+				continue;
+			case BUILD_BLOB:
+				raw = va_arg(args, chunk_t);
 				continue;
 			case BUILD_RSA_MODULUS:
 				n = va_arg(args, chunk_t);
@@ -927,7 +930,7 @@ pkcs11_public_key_t *pkcs11_public_key_load(key_type_t type, va_list args)
 			return &this->public;
 		}
 	}
-	else if (blob.ptr)
+	else if (blob.ptr || raw.ptr)
 	{
 		switch (type)
 		{
@@ -956,11 +959,17 @@ pkcs11_public_key_t *pkcs11_public_key_load(key_type_t type, va_list args)
 			case KEY_ML_DSA_87:
 			{
 				CK_ML_DSA_PARAMETER_SET_TYPE param_set = CKP_ML_DSA_44;
-				key_type_t parsed;
 				chunk_t value;
 
-				parsed = public_key_info_decode(blob, &value);
-				if (parsed != type || value.len != get_public_key_size(type))
+				if (raw.ptr)
+				{
+					value = raw;
+				}
+				else if (public_key_info_decode(blob, &value) != type)
+				{
+					return NULL;
+				}
+				if (value.len != get_public_key_size(type))
 				{
 					return NULL;
 				}
